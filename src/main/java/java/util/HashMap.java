@@ -139,6 +139,9 @@ public class HashMap<K,V>
     static final int MAXIMUM_CAPACITY = 1 << 30;
 
     /**
+     * 默认加载因子（table被填满的程度）
+     * 在随机独立事件里面，同一节点出现冲突次数为8次的概率极低，0.75f作为加载因子时
+     * 0.75f * capacity 这个阀值作重构hash表的的阀值时，满足泊松分布同一节点冲突不超过8次的极低概率事件
      * The load factor used when none specified in constructor.
      */
     static final float DEFAULT_LOAD_FACTOR = 0.75f;
@@ -160,6 +163,7 @@ public class HashMap<K,V>
     int threshold;
 
     /**
+     * 加载因子
      * The load factor for the hash table.
      *
      * @serial

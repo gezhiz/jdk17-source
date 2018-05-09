@@ -129,12 +129,14 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
     /* ---------------- Constants -------------- */
 
     /**
+     * 默认初始容量
      * The default initial capacity for this table,
      * used when not otherwise specified in a constructor.
      */
     static final int DEFAULT_INITIAL_CAPACITY = 16;
 
     /**
+     * 默认加载因子
      * The default load factor for this table, used when not
      * otherwise specified in a constructor.
      */
@@ -272,7 +274,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         }
 
         /**
-         * Sets next field with volatile write semantics.  (See above
+         * Sets next field with volatile write semantics（语义）.  (See above
          * about use of putOrderedObject.)
          */
         final void setNext(HashEntry<K,V> n) {
@@ -356,12 +358,12 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
          * still using old version of table.
          *
          * This class defines only mutative(可变的) methods requiring locking.
-         * Except as noted, the methods of this class perform the
+         * Except as noted(记录), perform the
          * per-segment versions of ConcurrentHashMap methods.  (Other
          * methods are integrated directly into ConcurrentHashMap
-         * methods.) These mutative methods use a form of controlled
-         * spinning on contention via methods scanAndLock and
-         * scanAndLockForPut. These intersperse tryLocks with
+         * methods.) These mutative methods use a form of(以……的形式) controlled
+         * spinning（旋转） on contention via methods scanAndLock and
+         * scanAndLockForPut. These intersperse（点） tryLocks with
          * traversals to locate nodes.  The main benefit is to absorb
          * cache misses (which are very common for hash tables) while
          * obtaining locks so that traversal is faster once
@@ -369,7 +371,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
          * must be re-acquired under lock anyway to ensure sequential
          * consistency of updates (and in any case may be undetectably
          * stale), but they will normally be much faster to re-locate.
-         * Also, scanAndLockForPut speculatively creates a fresh node
+         * Also, scanAndLockForPut speculatively(可能) creates a fresh node
          * to use in put if no node is found.
          */
 
@@ -387,7 +389,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
 
         /**
          * The per-segment table. Elements are accessed via
-         * entryAt/setEntryAt providing volatile semantics.
+         * entryAt/setEntryAt providing volatile semantics（语义）.
          */
         transient volatile HashEntry<K,V>[] table;
 
@@ -398,15 +400,17 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         transient int count;
 
         /**
-         * The total number of mutative operations in this segment.
+         * 修改次数
+         * The total number of mutative（可变的） operations in this segment.
          * Even though this may overflows 32 bits, it provides
-         * sufficient accuracy for stability checks in CHM isEmpty()
+         * sufficient accuracy（准确性） for stability checks in CHM isEmpty()
          * and size() methods.  Accessed only either within locks or
          * among other volatile reads that maintain visibility.
          */
         transient int modCount;
 
         /**
+         * ﻿阈值（极限）
          * The table is rehashed when its size exceeds this threshold.
          * (The value of this field is always <tt>(int)(capacity *
          * loadFactor)</tt>.)
@@ -414,6 +418,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         transient int threshold;
 
         /**
+         * ﻿加载因子
          * The load factor for the hash table.  Even though this value
          * is same for all segments, it is replicated to avoid needing
          * links to outer object.
@@ -434,31 +439,31 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
             try {
                 HashEntry<K,V>[] tab = table;
                 int index = (tab.length - 1) & hash;
-                HashEntry<K,V> first = entryAt(tab, index);
+                HashEntry<K,V> first = entryAt(tab, index);//定位到entry数组中对应的节点（链表表头）
                 for (HashEntry<K,V> e = first;;) {
-                    if (e != null) {
+                    if (e != null) {//hash值对应的hashEntry存在
                         K k;
                         if ((k = e.key) == key ||
-                            (e.hash == hash && key.equals(k))) {
+                            (e.hash == hash && key.equals(k))) {//在链表中对应的key
                             oldValue = e.value;
                             if (!onlyIfAbsent) {
-                                e.value = value;
+                                e.value = value;//更新value值
                                 ++modCount;
                             }
                             break;
                         }
-                        e = e.next;
+                        e = e.next;//遍历
                     }
-                    else {
+                    else {//链表元素为空,遍历到链表最末端了  未找到对应的key，新建节点，把节点作为链表header
                         if (node != null)
                             node.setNext(first);
                         else
-                            node = new HashEntry<K,V>(hash, key, value, first);
+                            node = new HashEntry<K,V>(hash, key, value, first);//把first作为node的next,然后把node作为index位置entry链表的的表头
                         int c = count + 1;
                         if (c > threshold && tab.length < MAXIMUM_CAPACITY)
-                            rehash(node);
+                            rehash(node);//超出容量，重构
                         else
-                            setEntryAt(tab, index, node);
+                            setEntryAt(tab, index, node);//把node作为index位置entry链表的的表头
                         ++modCount;
                         count = c;
                         oldValue = null;
@@ -472,6 +477,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         }
 
         /**
+         * 扩充Segment的hashEntry数组为原先的两倍
          * Doubles size of table and repacks entries, also adding the
          * given node to new table
          */
@@ -500,33 +506,46 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
             HashEntry<K,V>[] newTable =
                 (HashEntry<K,V>[]) new HashEntry[newCapacity];
             int sizeMask = newCapacity - 1;
-            for (int i = 0; i < oldCapacity ; i++) {
+            for (int i = 0; i < oldCapacity ; i++) {//遍历oldTable
                 HashEntry<K,V> e = oldTable[i];
-                if (e != null) {
+                if (e != null) {//oldTable对应的链表不为空
                     HashEntry<K,V> next = e.next;
-                    int idx = e.hash & sizeMask;
-                    if (next == null)   //  Single node on list
-                        newTable[idx] = e;
-                    else { // Reuse consecutive sequence at same slot
+                    //idx 链表表头的新下标
+                    int idx = e.hash & sizeMask;//﻿计算e对应的这条链表在新数组中对应的下标
+                    if (next == null)   //  Single node on list 链表里只有一个结点，直接把整个链表拷贝过来
+                        //疑惑：为何不用考虑newTable中下标idx对应的链表是否不为空?
+                        //解惑
+                        /*后来发现这种情况是不可能出现的。这还是因为table的大小是按照2的幂次方的方式去扩展的。
+                        假设原来table的大小是2^k大小，那么现在新table的大小是2^(k+1)大小。而获取序号的方式是
+                        int idx = e.hash & sizeMask;
+                        而sizeMask = newTable.length - 1  即sizeMask = 11...1，即全是1，共k个1。
+                        获取序号的算法是用元素的hash值与sizeMask做与的操作。这样得到的idx实际上就是元素的
+                        hashcode值的低k位的值。而原table的sizeMask也全是1的二进制，不过总共是k-1位。
+                        那么原table的idx就是元素的hashcode的低k-1位的值。所以说如果元素的hashcode的第k为如果是0，
+                        那么元素在新桶的序号就是和原桶的序号是相等的。如果第k位的值是1，那么元素在新桶的序号就是 原桶的序号+(2^k-1)。
+                        所以说只可能是这两个值，对于所有元素都是有对应的两个位置，所以不会发生碰撞。那么下面的那个newTable[idx] = e;就没问题了，newTable中新序号处此时肯定是空的。
+                         */
+                        newTable[idx] = e;//如果newTable中的idx位置已经存在结点怎么办？  hash保证了不同下标再hash不会出现重复
+                    else { // Reuse consecutive sequence at same slot  链接有多个结点时  重用
                         HashEntry<K,V> lastRun = e;
-                        int lastIdx = idx;
-                        for (HashEntry<K,V> last = next;
+                        int lastIdx = idx;//重用在新链表中下标相同的结点
+                        for (HashEntry<K,V> last = next;//这个for循环时为了找到rehash之后新的bucket 的Index不再改变的链表位置
                              last != null;
-                             last = last.next) {
-                            int k = last.hash & sizeMask;
-                            if (k != lastIdx) {
+                             last = last.next) {//遍历整个链表
+                            int k = last.hash & sizeMask;//﻿旧数组中一个链表中的数据并不一定在新数组中属于同一个链表，所以这里需要每次都重新计算下标
+                            if (k != lastIdx) {//一旦发现lastIdx位置后面存在不同下标的结点，重新定位
                                 lastIdx = k;
                                 lastRun = last;
                             }
                         }
-                        newTable[lastIdx] = lastRun;
-                        // Clone remaining nodes
+                        newTable[lastIdx] = lastRun;//旧链表的尾结点首先插入新链表
+                        // Clone remaining nodes  处理剩下的节点  从（旧链表）头结点向后遍历，遍历到最后一组不同于前面hash值的组头
                         for (HashEntry<K,V> p = e; p != lastRun; p = p.next) {
                             V v = p.value;
                             int h = p.hash;
-                            int k = h & sizeMask;
+                            int k = h & sizeMask;//每一次都重新计算该结点应该放在hashEntry数组的哪个位置
                             HashEntry<K,V> n = newTable[k];
-                            newTable[k] = new HashEntry<K,V>(h, p.key, v, n);
+                            newTable[k] = new HashEntry<K,V>(h, p.key, v, n);//拼接链表
                         }
                     }
                 }
@@ -581,7 +600,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         /**
          * Scans for a node containing the given key while trying to
          * acquire lock for a remove or replace operation. Upon
-         * return, guarantees that lock is held.  Note that we must
+         * return（返回之前）, guarantees that lock is held.  Note that we must
          * lock even if the key is not found, to ensure sequential
          * consistency of updates.
          */
@@ -738,7 +757,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         long u = (k << SSHIFT) + SBASE; // raw offset
         Segment<K,V> seg;
         if ((seg = (Segment<K,V>)UNSAFE.getObjectVolatile(ss, u)) == null) {
-            Segment<K,V> proto = ss[0]; // use segment 0 as prototype
+            Segment<K,V> proto = ss[0]; // use segment 0 as prototype  使用segment[0]作为模板新建segment
             int cap = proto.table.length;
             float lf = proto.loadFactor;
             int threshold = (int)(cap * lf);
@@ -805,21 +824,31 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
             concurrencyLevel = MAX_SEGMENTS;
         // Find power-of-two sizes best matching arguments
         int sshift = 0;
-        int ssize = 1;
+        int ssize = 1;//segment数组的长度
+        //concurrencyLevel 并发级别 默认为（﻿DEFAULT_CONCURRENCY_LEVEL）16
+        //并发级别越高，ssize和shift的值越大，段偏移量segmentShift越小，segment分布越密集，支持并发量更大
         while (ssize < concurrencyLevel) {
             ++sshift;
             ssize <<= 1;
         }
-        this.segmentShift = 32 - sshift;
+        //sshift ssize左移次数 默认值为4
+        //ssize 默认为16
+
+        //segmentShift ﻿段偏移量 默认28
+        this.segmentShift = 32 - sshift;//默认sshift为4
+        //散列算法的掩码 默认15
         this.segmentMask = ssize - 1;
         if (initialCapacity > MAXIMUM_CAPACITY)
-            initialCapacity = MAXIMUM_CAPACITY;
-        int c = initialCapacity / ssize;
+            initialCapacity = MAXIMUM_CAPACITY;//容器最大值不能超过MAXIMUM_CAPACITY(1<<30)
+        //initialCapacity 容器大小 默认值为32
+
+        int c = initialCapacity / ssize;//作为每一个Segment的entry数组初始大小的基数
         if (c * ssize < initialCapacity)
-            ++c;
-        int cap = MIN_SEGMENT_TABLE_CAPACITY;
+            ++c;//向上取整
+        //c 默认值为2
+        int cap = MIN_SEGMENT_TABLE_CAPACITY;//2
         while (cap < c)
-            cap <<= 1;
+            cap <<= 1;//segment HashEntry数组的大小，2的n次方
         // create segments and segments[0]
         Segment<K,V> s0 =
             new Segment<K,V>(loadFactor, (int)(cap * loadFactor),
@@ -1122,16 +1151,22 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         if (value == null)
             throw new NullPointerException();
         int hash = hash(key);
-        int j = (hash >>> segmentShift) & segmentMask;
+        // >>>  无符号右移,忽略符号位，空位都以0补齐
+        // segmentShift segment偏移量 默认28
+        //segmentMask 散列算法掩码 默认15 00…… 1111  进行与（&）运算，保留低四位
+        /*  此散列算法目的就是减少冲突，使元素能够比较均匀的分散到各个Segment中，从而提高整个容器的效率。
+            计算得到散列的hash值之后，就定位Segment数组中的哪个片段了。
+            */
+        int j = (hash >>> segmentShift) & segmentMask;//j是通过hash散列码计算出来的相对于SBASE的地址偏移量
         if ((s = (Segment<K,V>)UNSAFE.getObject          // nonvolatile; recheck
              (segments, (j << SSHIFT) + SBASE)) == null) //  in ensureSegment
-            s = ensureSegment(j);
+            s = ensureSegment(j);//地址偏移量j对应的数据不存在segment，则在位置j新建一个segment
         return s.put(key, hash, value, false);
     }
 
     /**
      * {@inheritDoc}
-     *
+     *  与put()的源码基本一致，不同的是，调用segment的put方法是，onlyIfAbsent=true
      * @return the previous value associated with the specified key,
      *         or <tt>null</tt> if there was no mapping for the key
      * @throws NullPointerException if the specified key or value is null
