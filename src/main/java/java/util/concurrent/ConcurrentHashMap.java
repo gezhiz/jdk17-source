@@ -237,12 +237,14 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
     }
 
     /**
+     * segment掩码值，key的hash值的高位用于计算segment的索引
      * Mask value for indexing into segments. The upper bits of a
      * key's hash code are used to choose the segment.
      */
     final int segmentMask;
 
     /**
+     * 索引segment 的偏移量，key的hash值的高位用于计算Segment索引
      * Shift value for indexing within segments.
      */
     final int segmentShift;
@@ -439,6 +441,8 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
             try {
                 HashEntry<K,V>[] tab = table;
                 int index = (tab.length - 1) & hash;
+                //在锁内为何不用索引获取entry链表？
+                //因为对table的写操作（UNSAFE.putOrderedObject）值保证禁止写指令重排序，不能保证内存可见性，所以需要用entryAt保证volatile获取最新数据
                 HashEntry<K,V> first = entryAt(tab, index);//定位到entry数组中对应的节点（链表表头）
                 for (HashEntry<K,V> e = first;;) {
                     if (e != null) {//hash值对应的hashEntry存在
@@ -557,6 +561,11 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         }
 
         /**
+         * scanAndLock和scanAndLockForPut在竞争中使用受控旋转，也就是自旋次数受限制的自旋锁。
+         * 由于线程的阻塞与唤醒通常伴随着上下文切换、CPU抢占等，都是开销比较大的操作，使用自旋次数
+         * 受限制的自旋锁，可以提高获取锁的概率，降低线程阻塞的概率，这样可极大地提升性能。之所以自
+         * 旋次数受限制，是因为自旋会不断的消耗CPU的时间，无限制的自旋会导致开销增长。因此自旋锁适
+         * 用于多核CPU下，同时线程等待锁的时间非常短；若等待某个锁需要的时间较长，让线程尽早进入阻塞才是正确的选择。
          * Scans for a node containing given key while trying to
          * acquire lock, creating and returning one if not found. Upon
          * return, guarantees that lock is held. UNlike in most
@@ -598,6 +607,15 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         }
 
         /**
+         * 遍历entry链表，并获取锁
+         * 遍历的目的：防止entry链表在阻塞加锁的过程中会有变化 这样做的好处是，在遍历table的情况，尽快获取locks，以保证缓存的可用性与可靠性。
+         * 为了保证更新的一致性，在锁住的情况下，由于要重新获取锁，我们一般不会访问锁住的节点。
+         *
+         * 自旋锁和ReentrantLock的lock的区别：lock可能会使获取锁的线程自我中段，而在调用lock之前自旋有限（MAX_SCAN_RETRIES）次，可以提高效率，
+         * 之所以不让自旋锁一直自旋下去，是因为自旋过程中一直占用cpu资源
+         *
+         * 每一个Segment都是一个ReentrantLock
+         *
          * Scans for a node containing the given key while trying to
          * acquire lock for a remove or replace operation. Upon
          * return（返回之前）, guarantees that lock is held.  Note that we must
@@ -609,21 +627,22 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
             HashEntry<K,V> first = entryForHash(this, hash);
             HashEntry<K,V> e = first;
             int retries = -1;
-            while (!tryLock()) {
+            while (!tryLock()) {//自旋
                 HashEntry<K,V> f;
-                if (retries < 0) {
-                    if (e == null || key.equals(e.key))
+                if (retries < 0) {//1.先找到节点，直到找到节点或者遍历完
+                    if (e == null || key.equals(e.key))//元素已经找到或者不存在，注：后面的代码：retries=-1
                         retries = 0;
                     else
                         e = e.next;
                 }
-                else if (++retries > MAX_SCAN_RETRIES) {
-                    lock();
+                else if (++retries > MAX_SCAN_RETRIES) {//2. retries在遍历完成后一直++ 直到超过最大获取锁的次数
+                    // 在两次重试的过程中链表没有发生变化，说明比较稳定，开始上锁。上锁成功后退出循环。
+                    lock();//注意：lock()方法可能会导致线程自我中断
                     break;
                 }
-                else if ((retries & 1) == 0 &&
-                         (f = entryForHash(this, hash)) != first) {
-                    e = first = f;
+                else if ((retries & 1) == 0 &&//注：retries & 1) == 0 true（retries为偶数） false(retries为奇数)
+                         (f = entryForHash(this, hash)) != first) {//3.多线程中，遍历过程中如果表头有变化（其他 线程修改了当前链表），则让retries=-1,然后重新遍历
+                    e = first = f;// re-traverse if entry changed
                     retries = -1;
                 }
             }
@@ -634,24 +653,24 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
          */
         final V remove(Object key, int hash, Object value) {
             if (!tryLock())
-                scanAndLock(key, hash);
+                scanAndLock(key, hash);//阻塞的方式去获取锁，直到获取成功
             V oldValue = null;
             try {
                 HashEntry<K,V>[] tab = table;
                 int index = (tab.length - 1) & hash;
-                HashEntry<K,V> e = entryAt(tab, index);
+                HashEntry<K,V> e = entryAt(tab, index);//e是循环遍历指针
                 HashEntry<K,V> pred = null;
-                while (e != null) {
+                while (e != null) {//遍历entry数组，直到找到对应key
                     K k;
                     HashEntry<K,V> next = e.next;
                     if ((k = e.key) == key ||
                         (e.hash == hash && key.equals(k))) {
                         V v = e.value;
                         if (value == null || value == v || value.equals(v)) {
-                            if (pred == null)
+                            if (pred == null)//第一个结点就是要找的结点
                                 setEntryAt(tab, index, next);
                             else
-                                pred.setNext(next);
+                                pred.setNext(next);//删除e结点
                             ++modCount;
                             --count;
                             oldValue = v;
@@ -787,6 +806,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
     }
 
     /**
+     * 使用此方法之前应当确保给定的hash值对应的key在所给的segment中,查看ensureSegment()
      * Gets the table entry for the given segment and hash
      */
     @SuppressWarnings("unchecked")
@@ -1014,7 +1034,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         Segment<K,V> s; // manually integrate access methods to reduce overhead
         HashEntry<K,V>[] tab;
         int h = hash(key);
-        long u = (((h >>> segmentShift) & segmentMask) << SSHIFT) + SBASE;
+        long u = (((h >>> segmentShift) & segmentMask) << SSHIFT) + SBASE;//计算Segment的下标
         if ((s = (Segment<K,V>)UNSAFE.getObjectVolatile(segments, u)) != null &&
             (tab = s.table) != null) {
             for (HashEntry<K,V> e = (HashEntry<K,V>) UNSAFE.getObjectVolatile
@@ -1100,9 +1120,9 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
                         sum += seg.modCount;
                     }
                 }
-                if (retries > 0 && sum == last)
+                if (retries > 0 && sum == last)//前后两次循环总修改次数一致，表明没有其他线程修改，则跳出循环
                     break;
-                last = sum;
+                last = sum;//last保留上一次循环总修改的次数
             }
         } finally {
             if (retries > RETRIES_BEFORE_LOCK) {
