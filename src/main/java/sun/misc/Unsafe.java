@@ -883,6 +883,7 @@ public final class Unsafe {
                                                    long x);
 
     /**
+     * 获取object对象中地址偏移量为offset的对象
      * Fetches a reference value from a given Java variable, with volatile
      * load semantics. Otherwise identical to {@link #getObject(Object, long)}
      */

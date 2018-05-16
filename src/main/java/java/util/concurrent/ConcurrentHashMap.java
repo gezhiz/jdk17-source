@@ -299,6 +299,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
     }
 
     /**
+     * @param i hash索引值 i取值范围:[0,table.length-1]
      * Gets the ith element of given table (if nonnull) with volatile
      * read semantics. Note: This is manually integrated into a few
      * performance-sensitive methods to reduce call overhead.
@@ -307,10 +308,11 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
     static final <K,V> HashEntry<K,V> entryAt(HashEntry<K,V>[] tab, int i) {
         return (tab == null) ? null :
             (HashEntry<K,V>) UNSAFE.getObjectVolatile
-            (tab, ((long)i << TSHIFT) + TBASE);
+            (tab, ((long)i << TSHIFT) + TBASE);//获取tab中，相对table数组第一个元素偏移量为(long)i << TSHIFT) + TBASE的元素
     }
 
     /**
+     * @param i hash索引值
      * Sets the ith element of given table, with volatile write
      * semantics. (See above about use of putOrderedObject.)
      */
@@ -484,6 +486,7 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
          * 扩充Segment的hashEntry数组为原先的两倍
          * Doubles size of table and repacks entries, also adding the
          * given node to new table
+         * @param node 需要添加到hash表中的结点
          */
         @SuppressWarnings("unchecked")
         private void rehash(HashEntry<K,V> node) {
@@ -1628,11 +1631,11 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         int ss, ts;
         try {
             UNSAFE = sun.misc.Unsafe.getUnsafe();
-            Class tc = HashEntry[].class;
-            Class sc = Segment[].class;
-            TBASE = UNSAFE.arrayBaseOffset(tc);
-            SBASE = UNSAFE.arrayBaseOffset(sc);
-            ts = UNSAFE.arrayIndexScale(tc);
+            Class tc = HashEntry[].class;//Segment内部的table
+            Class sc = Segment[].class;//Segment
+            TBASE = UNSAFE.arrayBaseOffset(tc);//table数组的第一个元素的偏移地址  long型
+            SBASE = UNSAFE.arrayBaseOffset(sc);//Segment数组的第一个元素的偏移地址
+            ts = UNSAFE.arrayIndexScale(tc);//获取HashEntry[]单位偏移量=4  获取用户给定数组寻址的换算因子,即一个元素占用的位数.一个合适的换算因子不能返回的时候(例如：基本类型),* 返回0.
             ss = UNSAFE.arrayIndexScale(sc);
             HASHSEED_OFFSET = UNSAFE.objectFieldOffset(
                 ConcurrentHashMap.class.getDeclaredField("hashSeed"));
@@ -1642,7 +1645,9 @@ public class ConcurrentHashMap<K, V> extends AbstractMap<K, V>
         if ((ss & (ss-1)) != 0 || (ts & (ts-1)) != 0)
             throw new Error("data type scale not a power of two");
         SSHIFT = 31 - Integer.numberOfLeadingZeros(ss);
-        TSHIFT = 31 - Integer.numberOfLeadingZeros(ts);
+        //TSHIFT表示每一个HashEntry元素占用空间的的大小,TBASE + i << TSHIFT 就得到了entry[i]的偏移地址
+        //把HashEntry[]单位偏移量转成移位的次数=2
+        TSHIFT = 31 - Integer.numberOfLeadingZeros(ts);//这个数据的二进制串中从最左边算起连续的“0”的总数量。因为int类型的数据长度为32所以高位不足的地方会以“0”填充。
     }
 
 }
