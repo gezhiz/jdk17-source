@@ -582,9 +582,18 @@ public class HashMap<K,V>
                     e.hash = null == e.key ? 0 : hash(e.key);
                 }
                 int i = indexFor(e.hash, newCapacity);
-                e.next = newTable[i];
-                newTable[i] = e;
-                e = next;
+                //--把e节点插入newTable start--
+                e.next = newTable[i];//e.next指向newTable当前指向的第一个节点
+                newTable[i] = e;//newTable指向e
+                //--把e节点插入newTable end--
+                e = next;//继续遍历
+
+                /**
+                 * 注意：死锁问题
+                 * 在resize之后，链表节点的原有的顺序（1，2，3，4）变成了（4，3，1，注：节点2被放入其他链表）
+                 * 两个线程同时进入while循环，正常情况下，next指向的是e.next
+                 * 但是在并发情况下，可能导致next指向的节点，被其他线程resize之后，next指向的节点和e指向的节点顺序对调,导致在循环遍历过程中出现死循环
+                 */
             }
         }
     }
